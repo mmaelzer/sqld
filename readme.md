@@ -30,6 +30,29 @@ Flags:
     	database username (default: root)
 ```
 
+Query
+-----
+Interact with the database via URLs.
+```
+http://localhost:8080/table_name
+```
+
+### Filtering
+```
+http://localhost:8080/table_name?id=10
+http://localhost:8080/table_name?name=fred&age=67
+
+```
+### Limit
+```
+http://localhost:8080/table_name?__limit__=20&name=bob
+```
+
+### Offset
+```
+http://localhost:8080/table_name?__limit__=20&__offset__=100
+```
+
 TODO
 ----
 - [ ] Add proper Postgres support
