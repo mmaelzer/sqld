@@ -1,7 +1,7 @@
 sqld
 ====
 
-Expose a database as a json serving http server
+Expose a database with an http server
 
 Install
 -------
