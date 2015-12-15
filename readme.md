@@ -65,7 +65,7 @@ Create rows in the database via POST requests.
 POST http://localhost:8080/table_name
 ```
 ### Request
-```
+```json
 {
   "name": "jim",
   "age": 54
@@ -73,7 +73,7 @@ POST http://localhost:8080/table_name
 ```
 
 ### Response
-```
+```json
 {
   "id": 10,
   "name": "jim",
@@ -86,7 +86,7 @@ Create multiple rows in the database via a POST request with an array.
 POST http://localhost:8080/table_name
 ```
 ### Request
-```
+```json
 [
   { "name": "bill" },
   { "name": "nancy" },
@@ -94,7 +94,7 @@ POST http://localhost:8080/table_name
 ]
 ```
 ### Response
-```
+```json
 [
   {
     "id": 11,
