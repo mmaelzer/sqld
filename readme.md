@@ -13,7 +13,7 @@ Usage
 -----
 ```
 Usage of 'sqld':
-	sqld -user=root -name=table_name -dsn=sql.example.com:3306
+	sqld -user=root -name=database_name -dsn=sql.example.com:3306
 
 Flags:
   -dsn string
@@ -37,11 +37,16 @@ Interact with the database via URLs.
 http://localhost:8080/table_name
 ```
 
+### With ID
+The following equivalent to a request with `table_name?id=10`
+```
+http://localhost:8080/table_name/10
+```
+
 ### Filtering
 ```
 http://localhost:8080/table_name?id=10
 http://localhost:8080/table_name?name=fred&age=67
-
 ```
 ### Limit
 ```
@@ -53,8 +58,65 @@ http://localhost:8080/table_name?__limit__=20&name=bob
 http://localhost:8080/table_name?__limit__=20&__offset__=100
 ```
 
+Create
+------
+Create rows in the database via POST requests.
+```
+POST http://localhost:8080/table_name
+```
+### Request
+```
+{
+  "name": "jim",
+  "age": 54
+}
+```
+
+### Response
+```
+{
+  "id": 10,
+  "name": "jim",
+  "age": 54
+}
+```
+
+Create multiple rows in the database via a POST request with an array.
+```
+POST http://localhost:8080/table_name
+```
+### Request
+```
+[
+  { "name": "bill" },
+  { "name": "nancy" },
+  { "name": "chris" }
+]
+```
+### Response
+```
+[
+  {
+    "id": 11,
+    "name": "bill",
+    "age": null
+  },
+  {
+    "id": 12,
+    "name": "nancy",
+    "age": null
+  },
+  {
+    "id": 13,
+    "name": "chris",
+    "age": null
+  }
+]
+```
+
 TODO
 ----
+- [ ] Add PUT/DELETE support
 - [ ] Add proper Postgres support
 - [ ] Add config file support
 - [ ] Add support for stdin passing of a password
