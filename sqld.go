@@ -22,12 +22,12 @@ const usageMessage = "" +
 `
 
 var (
-	DSN    = flag.String("dsn", "", "database source name (default: 'localhost:3306')")
-	user   = flag.String("user", "", "database username (default: root)")
-	pass   = flag.String("pass", "", "database password (default: '')")
-	DBType = flag.String("type", "", "database type (default: mysql)")
+	DSN    = flag.String("dsn", "localhost:3306", "database source name")
+	user   = flag.String("user", "root", "database username")
+	pass   = flag.String("pass", "", "database password")
+	DBType = flag.String("type", "mysql", "database type")
 	DBName = flag.String("name", "", "database name")
-	port   = flag.String("port", "", "http port (default: 8080")
+	port   = flag.Int("port", 8080, "http port")
 
 	mysqlDSNTemplate    = "%s:%s@(%s)/%s?parseTime=true"
 	postgresDSNTemplate = "user='%s' password='%s' dbname='%s'"
@@ -407,13 +407,6 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flag.Usage = usage
 	flag.Parse()
-	if DBType == nil || *DBType == "" {
-		*DBType = "mysql"
-	}
-
-	if port == nil || *port == "" {
-		*port = "8080"
-	}
 
 	var err error
 	db, err = sqlx.Connect(*DBType, buildDsn())
@@ -423,5 +416,5 @@ func main() {
 	}
 
 	http.HandleFunc("/", handleQuery)
-	fmt.Println(http.ListenAndServe(":"+*port, nil))
+	fmt.Println(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }

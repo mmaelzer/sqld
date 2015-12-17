@@ -13,21 +13,21 @@ Usage
 -----
 ```
 Usage of 'sqld':
-	sqld -user=root -name=database_name -dsn=sql.example.com:3306
+	sqld -user=root -name=table_name -port=8000
 
 Flags:
   -dsn string
-    	database source name (default: 'localhost:3306')
+    	database source name (default "localhost:3306")
   -name string
     	database name
   -pass string
-    	database password (default: '')
-  -port string
-    	http port (default: 8080
+    	database password
+  -port int
+    	http port (default 8080)
   -type string
-    	database type (default: mysql)
+    	database type (default "mysql")
   -user string
-    	database username (default: root)
+    	database username (default "root")
 ```
 
 Query
