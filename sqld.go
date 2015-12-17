@@ -65,7 +65,7 @@ func buildDsn() string {
 	}
 }
 
-func buildQuery(r *http.Request) (string, []interface{}, error) {
+func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
 	paths := strings.Split(r.URL.Path, "/")
 	table := paths[1]
 	query := sq.Select("*").From(table)
@@ -94,16 +94,69 @@ func buildQuery(r *http.Request) (string, []interface{}, error) {
 	return query.ToSql()
 }
 
+func buildUpdateQuery(r *http.Request, values map[string]interface{}) (string, []interface{}, error) {
+	paths := strings.Split(r.URL.Path, "/")
+	table := paths[1]
+	query := sq.Update("").Table(table)
+
+	for key, val := range values {
+		query = query.SetMap(sq.Eq{key: val})
+	}
+
+	if len(paths) > 2 && paths[2] != "" {
+		query = query.Where(sq.Eq{"id": paths[2]})
+	}
+
+	for key, val := range r.URL.Query() {
+		switch key {
+		case "__limit__":
+			limit, err := strconv.Atoi(val[0])
+			if err == nil {
+				query = query.Limit(uint64(limit))
+			}
+		default:
+			query = query.Where(sq.Eq{key: val})
+		}
+	}
+
+	return query.ToSql()
+}
+
+func buildDeleteQuery(r *http.Request) (string, []interface{}, error) {
+	paths := strings.Split(r.URL.Path, "/")
+	table := paths[1]
+	query := sq.Delete("").From(table)
+
+	if len(paths) > 2 && paths[2] != "" {
+		query = query.Where(sq.Eq{"id": paths[2]})
+	}
+
+	for key, val := range r.URL.Query() {
+		switch key {
+		case "__limit__":
+			limit, err := strconv.Atoi(val[0])
+			if err == nil {
+				query = query.Limit(uint64(limit))
+			}
+		default:
+			query = query.Where(sq.Eq{key: val})
+		}
+	}
+
+	return query.ToSql()
+}
+
+// read handles the GET request.
 func read(w http.ResponseWriter, r *http.Request) {
-	sql, args, err := buildQuery(r)
+	sql, args, err := buildSelectQuery(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	rows, err := db.Query(sql, args...)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer rows.Close()
@@ -155,6 +208,8 @@ func read(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(tableData)
 }
 
+// createMany handles the POST method when only multiple models
+// are provided in the request body.
 func createMany(table string, list []interface{}) ([]map[string]interface{}, []error) {
 
 	var wg sync.WaitGroup
@@ -186,6 +241,8 @@ func createMany(table string, list []interface{}) ([]map[string]interface{}, []e
 	return items, errors
 }
 
+// createSingle handles the POST method when only a single model
+// is provided in the request body.
 func createSingle(table string, item map[string]interface{}) (map[string]interface{}, error) {
 	columns := make([]string, len(item))
 	values := make([]interface{}, len(item))
@@ -215,6 +272,7 @@ func createSingle(table string, item map[string]interface{}) (map[string]interfa
 	return item, nil
 }
 
+// create handles the POST method.
 func create(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -236,7 +294,7 @@ func create(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		manySaved, err := createMany(table, list)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusCreated)
 		if len(err) == 0 {
 			json.NewEncoder(w).Encode(manySaved)
 		} else {
@@ -256,22 +314,79 @@ func create(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(saved)
 		}
+		return
 	}
 
 	w.WriteHeader(http.StatusBadRequest)
 }
 
+// update handles the PUT method.
 func update(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusMethodNotAllowed)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	sql, args, err := buildUpdateQuery(r, data)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	execQuery(sql, args, w)
 }
 
+// del handles the DELETE method.
 func del(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusMethodNotAllowed)
+	sql, args, err := buildDeleteQuery(r)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	execQuery(sql, args, w)
 }
 
+// execQuery will perform a sql query, return the appropriate error code
+// given error states or return an http 204 NO CONTENT on success.
+func execQuery(sql string, args []interface{}, w http.ResponseWriter) {
+	res, err := db.Exec(sql, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if res != nil && rows == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleQuery routes the given request to the proper handler
+// given the request method. If the request method matches
+// no available handlers, it responds with a method not found
+// status.
 func handleQuery(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
@@ -287,6 +402,8 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// main handles some flag defaults, connects to the database,
+// and starts the http server.
 func main() {
 	flag.Usage = usage
 	flag.Parse()

@@ -72,7 +72,7 @@ POST http://localhost:8080/table_name
 }
 ```
 
-### Response
+### Response (201)
 ```json
 {
   "id": 10,
@@ -93,7 +93,7 @@ POST http://localhost:8080/table_name
   { "name": "chris" }
 ]
 ```
-### Response
+### Response (201)
 ```json
 [
   {
@@ -114,13 +114,42 @@ POST http://localhost:8080/table_name
 ]
 ```
 
+
+Update
+------
+Update a row in the database with PUT requests.
+```
+PUT http://localhost:8080/table_name/:id?where=clause
+```
+### Request
+```json
+{
+  "name": "jill"
+}
+```
+
+### Response (204)
+Empty
+
+
+Delete
+------
+Delete a row in the database with DELETE requests.
+```
+DELETE http://localhost:8080/table_name/:id?where=clause
+```
+
+### Response (204)
+Empty
+
+
 TODO
 ----
-- [ ] Add PUT/DELETE support
 - [ ] Add proper Postgres support
 - [ ] Add config file support
 - [ ] Add support for stdin passing of a password
 - [ ] Maybe add pagination in responses
+- [ ] Add raw query support
 
 License
 -------
