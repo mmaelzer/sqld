@@ -24,6 +24,8 @@ Flags:
     	database password
   -port int
     	http port (default 8080)
+  -raw
+    	allow raw sql queries
   -type string
     	database type (default "mysql")
   -user string
@@ -143,13 +145,53 @@ DELETE http://localhost:8080/table_name/:id?where=clause
 Empty
 
 
+Raw SQL Queries
+---------------
+If you use the `-raw` flag when launching *sqld*, you can `POST` raw SQL queries that will be evaluated and returned. Queries are provided inside of the JSON request body with _either_ `read` or `write` keys and string values that contain the SQL to execute.
+  
+For example, if we run `sqld -name=my_db -raw` we can perform queries like:
+```
+POST http://localhost:8080
+```
+### Request
+```json
+{
+  "read": "SELECT * FROM user WHERE name LIKE %ji%"
+}
+```
+### Response (200)
+```json
+[
+  {
+    "id": 66,
+    "name": "jill"
+  },
+  {
+    "id": 71,
+    "name": "jim"
+  }
+]
+```
+### Reqest
+```json
+{
+  "write": "CREATE TABLE number (id INT NOT NULL AUTO_INCREMENT, num INT NOT NULL, PRIMARY KEY ( id ) )"
+}
+```
+### Response (200)
+```json
+{
+    "last_insert_id": 0,
+    "rows_affected": 0
+}
+```
+
 TODO
 ----
 - [ ] Add proper Postgres support
 - [ ] Add config file support
 - [ ] Add support for stdin passing of a password
 - [ ] Maybe add pagination in responses
-- [ ] Add raw query support
 
 License
 -------

@@ -22,12 +22,13 @@ const usageMessage = "" +
 `
 
 var (
-	DSN    = flag.String("dsn", "localhost:3306", "database source name")
-	user   = flag.String("user", "root", "database username")
-	pass   = flag.String("pass", "", "database password")
-	DBType = flag.String("type", "mysql", "database type")
-	DBName = flag.String("name", "", "database name")
-	port   = flag.Int("port", 8080, "http port")
+	allowRaw = flag.Bool("raw", false, "allow raw sql queries")
+	DSN      = flag.String("dsn", "localhost:3306", "database source name")
+	user     = flag.String("user", "root", "database username")
+	pass     = flag.String("pass", "", "database password")
+	DBType   = flag.String("type", "mysql", "database type")
+	DBName   = flag.String("name", "", "database name")
+	port     = flag.Int("port", 8080, "http port")
 
 	mysqlDSNTemplate    = "%s:%s@(%s)/%s?parseTime=true"
 	postgresDSNTemplate = "user='%s' password='%s' dbname='%s'"
@@ -146,25 +147,16 @@ func buildDeleteQuery(r *http.Request) (string, []interface{}, error) {
 	return query.ToSql()
 }
 
-// read handles the GET request.
-func read(w http.ResponseWriter, r *http.Request) {
-	sql, args, err := buildSelectQuery(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
+func readQuery(sql string, args []interface{}) ([]map[string]interface{}, error) {
 	rows, err := db.Query(sql, args...)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	count := len(columns)
@@ -178,8 +170,7 @@ func read(w http.ResponseWriter, r *http.Request) {
 		}
 		err = rows.Scan(valuePtrs...)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return nil, err
 		}
 		rowData := make(map[string]interface{})
 		for i, col := range columns {
@@ -199,10 +190,24 @@ func read(w http.ResponseWriter, r *http.Request) {
 
 	err = rows.Err()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil, err
+	}
+	return tableData, nil
+}
+
+// read handles the GET request.
+func read(w http.ResponseWriter, r *http.Request) {
+	sql, args, err := buildSelectQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	tableData, err := readQuery(sql, args)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(tableData)
@@ -383,11 +388,72 @@ func execQuery(sql string, args []interface{}, w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type RawQuery struct {
+	ReadQuery  string `json:"read"`
+	WriteQuery string `json:"write"`
+}
+
+func raw(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var query RawQuery
+	err = json.Unmarshal(body, &query)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	noArgs := make([]interface{}, 0)
+	if query.ReadQuery != "" {
+		tableData, err := readQuery(query.ReadQuery, noArgs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(tableData)
+	} else if query.WriteQuery != "" {
+		res, err := db.Exec(query.WriteQuery, noArgs...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		lastId, _ := res.LastInsertId()
+		rAffect, _ := res.RowsAffected()
+		json.NewEncoder(w).Encode(struct {
+			LastInsertId int64 `json:"last_insert_id"`
+			RowsAffected int64 `json:"rows_affected"`
+		}{
+			lastId,
+			rAffect,
+		})
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+}
+
 // handleQuery routes the given request to the proper handler
 // given the request method. If the request method matches
 // no available handlers, it responds with a method not found
 // status.
 func handleQuery(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/" {
+		if *allowRaw == true && r.Method == "POST" {
+			raw(w, r)
+		} else {
+			w.WriteHeader(http.StatusBadRequest)
+		}
+		return
+	}
+
 	switch r.Method {
 	case "GET":
 		read(w, r)
