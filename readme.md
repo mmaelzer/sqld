@@ -1,7 +1,9 @@
 sqld
 ====
 
-Expose a database with an http server
+SQL over HTTP.
+  
+Currently supports MySQL and Postgres databases.
 
 Install
 -------
@@ -13,13 +15,13 @@ Usage
 -----
 ```
 Usage of 'sqld':
-	sqld -user=root -name=table_name -port=8000
+	sqld -user root -db database_name -type mysql
 
 Flags:
-  -dsn string
-    	database source name (default "localhost:3306")
-  -name string
+  -db string
     	database name
+  -dsn string
+    	database source name
   -pass string
     	database password
   -port int
@@ -188,7 +190,6 @@ POST http://localhost:8080
 
 TODO
 ----
-- [ ] Add proper Postgres support
 - [ ] Add config file support
 - [ ] Add support for stdin passing of a password
 - [ ] Maybe add pagination in responses
