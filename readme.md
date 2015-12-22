@@ -193,6 +193,8 @@ TODO
 - [ ] Add config file support
 - [ ] Add support for stdin passing of a password
 - [ ] Maybe add pagination in responses
+- [ ] Add sqlite support
+- [ ] Add in-memory support for sqlite
 
 License
 -------
