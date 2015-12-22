@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -11,29 +12,30 @@ import (
 	"strings"
 	"sync"
 
-	sq "github.com/Masterminds/squirrel"
+	"github.com/Masterminds/squirrel"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 )
 
 const usageMessage = "" +
 	`Usage of 'sqld':
-	sqld -user=root -name=table_name -port=8000
+	sqld -user root -db database_name -type mysql
 `
 
 var (
 	allowRaw = flag.Bool("raw", false, "allow raw sql queries")
-	DSN      = flag.String("dsn", "localhost:3306", "database source name")
+	DSN      = flag.String("dsn", "", "database source name")
 	user     = flag.String("user", "root", "database username")
 	pass     = flag.String("pass", "", "database password")
 	DBType   = flag.String("type", "mysql", "database type")
-	DBName   = flag.String("name", "", "database name")
+	DBName   = flag.String("db", "", "database name")
 	port     = flag.Int("port", 8080, "http port")
 
 	mysqlDSNTemplate    = "%s:%s@(%s)/%s?parseTime=true"
-	postgresDSNTemplate = "user='%s' password='%s' dbname='%s'"
+	postgresDSNTemplate = "postgres://%s:%s@%s/%s?sslmode=disable"
 
 	db *sqlx.DB
+	sq squirrel.StatementBuilderType
 )
 
 func usage() {
@@ -43,9 +45,13 @@ func usage() {
 	os.Exit(2)
 }
 
-func buildDsn() string {
+func buildDSN() string {
 	if DSN == nil || *DSN == "" {
-		*DSN = "localhost:3306"
+		if *DBType == "postgres" {
+			*DSN = "localhost:5432"
+		} else {
+			*DSN = "localhost:3306"
+		}
 	}
 
 	if user == nil || *user == "" {
@@ -60,10 +66,22 @@ func buildDsn() string {
 	case "mysql":
 		return fmt.Sprintf(mysqlDSNTemplate, *user, *pass, *DSN, *DBName)
 	case "postgres":
-		return fmt.Sprintf(postgresDSNTemplate, *user, *pass, *DBName)
+		return fmt.Sprintf(postgresDSNTemplate, *user, *pass, *DSN, *DBName)
 	default:
 		return ""
 	}
+}
+
+func initDB() (*sqlx.DB, error) {
+	switch *DBType {
+	case "mysql":
+		return initMySQL()
+	case "postgres":
+		return initPostgres()
+	case "sqlite":
+		return initSQLite()
+	}
+	return nil, errors.New("Unsupported database type " + *DBType)
 }
 
 func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
@@ -72,7 +90,7 @@ func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
 	query := sq.Select("*").From(table)
 
 	if len(paths) > 2 && paths[2] != "" {
-		query = query.Where(sq.Eq{"id": paths[2]})
+		query = query.Where(squirrel.Eq{"id": paths[2]})
 	}
 
 	for key, val := range r.URL.Query() {
@@ -88,7 +106,7 @@ func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
 				query = query.Offset(uint64(offset))
 			}
 		default:
-			query = query.Where(sq.Eq{key: val})
+			query = query.Where(squirrel.Eq{key: val})
 		}
 	}
 
@@ -101,11 +119,11 @@ func buildUpdateQuery(r *http.Request, values map[string]interface{}) (string, [
 	query := sq.Update("").Table(table)
 
 	for key, val := range values {
-		query = query.SetMap(sq.Eq{key: val})
+		query = query.SetMap(squirrel.Eq{key: val})
 	}
 
 	if len(paths) > 2 && paths[2] != "" {
-		query = query.Where(sq.Eq{"id": paths[2]})
+		query = query.Where(squirrel.Eq{"id": paths[2]})
 	}
 
 	for key, val := range r.URL.Query() {
@@ -116,7 +134,7 @@ func buildUpdateQuery(r *http.Request, values map[string]interface{}) (string, [
 				query = query.Limit(uint64(limit))
 			}
 		default:
-			query = query.Where(sq.Eq{key: val})
+			query = query.Where(squirrel.Eq{key: val})
 		}
 	}
 
@@ -129,7 +147,7 @@ func buildDeleteQuery(r *http.Request) (string, []interface{}, error) {
 	query := sq.Delete("").From(table)
 
 	if len(paths) > 2 && paths[2] != "" {
-		query = query.Where(sq.Eq{"id": paths[2]})
+		query = query.Where(squirrel.Eq{"id": paths[2]})
 	}
 
 	for key, val := range r.URL.Query() {
@@ -140,7 +158,7 @@ func buildDeleteQuery(r *http.Request) (string, []interface{}, error) {
 				query = query.Limit(uint64(limit))
 			}
 		default:
-			query = query.Where(sq.Eq{key: val})
+			query = query.Where(squirrel.Eq{key: val})
 		}
 	}
 
@@ -475,7 +493,7 @@ func main() {
 	flag.Parse()
 
 	var err error
-	db, err = sqlx.Connect(*DBType, buildDsn())
+	db, err = initDB()
 	if err != nil {
 		fmt.Printf("Unable to connect to database: %s\n", err)
 		os.Exit(1)
