@@ -68,17 +68,18 @@ func buildDSN() string {
 	case "postgres":
 		return fmt.Sprintf(postgresDSNTemplate, *user, *pass, *DSN, *DBName)
 	default:
-		return ""
+		return *DSN
 	}
 }
 
 func initDB() (*sqlx.DB, error) {
+
 	switch *DBType {
 	case "mysql":
 		return initMySQL()
 	case "postgres":
 		return initPostgres()
-	case "sqlite":
+	case "sqlite3":
 		return initSQLite()
 	}
 	return nil, errors.New("Unsupported database type " + *DBType)

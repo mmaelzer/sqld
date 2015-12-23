@@ -3,7 +3,7 @@ sqld
 
 SQL over HTTP.
   
-Currently supports MySQL and Postgres databases.
+*sqld* supports MySQL (`-type mysql`), Postgres (`-type postgres`), and SQLite (`-type sqlite3`) databases.
 
 Install
 -------
@@ -24,7 +24,7 @@ Flags:
     	database source name
   -pass string
     	database password
-  -port int
+  -hport int
     	http port (default 8080)
   -raw
     	allow raw sql queries
@@ -33,6 +33,13 @@ Flags:
   -user string
     	database username (default "root")
 ```
+
+DSN
+---
+
+For MySQL and Postgres connections, the `-dsn` value will likely be a URI with a port, like `localhost:3306` for MySQL or `localhost:5432` for Postgres.  
+  
+For SQLite connections, the `-dsn` value can be a file name `test.db` or `file:test.db?cache=shared&mode=memory` or an in-memory store with `:memory:`.
 
 Query
 -----
@@ -193,8 +200,6 @@ TODO
 - [ ] Add config file support
 - [ ] Add support for stdin passing of a password
 - [ ] Maybe add pagination in responses
-- [ ] Add sqlite support
-- [ ] Add in-memory support for sqlite
 
 License
 -------
