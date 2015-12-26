@@ -33,7 +33,6 @@ var (
 	dbtype   = flag.String("type", "mysql", "database type")
 	dbname   = flag.String("db", "", "database name")
 	port     = flag.Int("port", 8080, "http port")
-	nolog    = flag.Bool("nolog", false, "disable logging")
 
 	mysqlDSNTemplate    = "%s:%s@(%s)/%s?parseTime=true"
 	postgresDSNTemplate = "postgres://%s:%s@%s/%s?sslmode=disable"
@@ -478,9 +477,6 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 	logRequest := func(status int) {
-		if *nolog {
-			return
-		}
 		log.Printf(
 			"%d %s %s %s",
 			status,
@@ -532,6 +528,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 // main handles some flag defaults, connects to the database,
 // and starts the http server.
 func main() {
+	log.SetOutput(os.Stdout)
 	flag.Usage = usage
 	flag.Parse()
 

@@ -24,8 +24,6 @@ Flags:
     	database source name
   -h string
     	database host
-  -nolog
-    	disable logging
   -p string
     	database password
   -port int
