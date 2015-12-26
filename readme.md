@@ -3,7 +3,7 @@ sqld
 
 SQL over HTTP.
   
-*sqld* supports MySQL (`-type mysql`), Postgres (`-type postgres`), and SQLite (`-type sqlite3`) databases.
+**sqld** supports MySQL (`-type mysql`), Postgres (`-type postgres`), and SQLite (`-type sqlite3`) databases.
 
 Install
 -------
@@ -15,22 +15,24 @@ Usage
 -----
 ```
 Usage of 'sqld':
-	sqld -user root -db database_name -type mysql
+	sqld -u root -db database_name -h localhost:3306 -type mysql
 
 Flags:
   -db string
     	database name
   -dsn string
     	database source name
-  -pass string
+  -h string
+    	database host
+  -p string
     	database password
-  -hport int
+  -port int
     	http port (default 8080)
   -raw
     	allow raw sql queries
   -type string
     	database type (default "mysql")
-  -user string
+  -u string
     	database username (default "root")
 ```
 

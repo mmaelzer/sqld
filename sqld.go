@@ -21,7 +21,7 @@ import (
 
 const usageMessage = "" +
 	`Usage of 'sqld':
-	sqld -user root -db database_name -type mysql
+	sqld -u root -db database_name -h localhost:3306 -type mysql
 `
 
 var (
