@@ -11,7 +11,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -111,7 +110,7 @@ func buildDSN() string {
 	case "postgres":
 		return fmt.Sprintf(postgresDSNTemplate, *user, *pass, *host, *dbname)
 	default:
-		return *dsn
+		return ""
 	}
 }
 
@@ -125,6 +124,13 @@ func initDB() (*sqlx.DB, error) {
 		return initSQLite()
 	}
 	return nil, errors.New("Unsupported database type " + *dbtype)
+}
+
+func closeDB() error {
+	if db != nil {
+		return db.Close()
+	}
+	return nil
 }
 
 func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
@@ -270,39 +276,6 @@ func read(r *http.Request) (interface{}, *SqldError) {
 	return tableData, nil
 }
 
-// createMany handles the POST method when only multiple models
-// are provided in the request body.
-func createMany(table string, list []interface{}) ([]map[string]interface{}, []error) {
-
-	var wg sync.WaitGroup
-	var errors []error
-	var errMutex sync.Mutex
-	var itemMutex sync.Mutex
-
-	items := make([]map[string]interface{}, 0)
-
-	for i := range list {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-
-			item, err := createSingle(table, list[i].(map[string]interface{}))
-			if err != nil {
-				errMutex.Lock()
-				errors = append(errors, err)
-				errMutex.Unlock()
-			} else {
-				itemMutex.Lock()
-				items = append(items, item)
-				itemMutex.Unlock()
-			}
-		}(i)
-	}
-	wg.Wait()
-
-	return items, errors
-}
-
 // createSingle handles the POST method when only a single model
 // is provided in the request body.
 func createSingle(table string, item map[string]interface{}) (map[string]interface{}, error) {
@@ -349,19 +322,6 @@ func create(r *http.Request) (interface{}, *SqldError) {
 
 	paths := strings.Split(r.URL.Path, "/")
 	table := paths[1]
-
-	list, ok := data.([]interface{})
-	if ok {
-		manySaved, err := createMany(table, list)
-		if len(err) == 0 {
-			return manySaved, nil
-		} else {
-			return map[string]interface{}{
-				"errors":  err,
-				"objects": manySaved,
-			}, nil
-		}
-	}
 
 	item, ok := data.(map[string]interface{})
 	if ok {

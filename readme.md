@@ -94,40 +94,6 @@ POST http://localhost:8080/table_name
 }
 ```
 
-Create multiple rows in the database via a POST request with an array.
-```
-POST http://localhost:8080/table_name
-```
-### Request
-```json
-[
-  { "name": "bill" },
-  { "name": "nancy" },
-  { "name": "chris" }
-]
-```
-### Response (201)
-```json
-[
-  {
-    "id": 11,
-    "name": "bill",
-    "age": null
-  },
-  {
-    "id": 12,
-    "name": "nancy",
-    "age": null
-  },
-  {
-    "id": 13,
-    "name": "chris",
-    "age": null
-  }
-]
-```
-
-
 Update
 ------
 Update a row in the database with PUT requests.

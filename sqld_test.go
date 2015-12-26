@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"testing"
@@ -8,12 +9,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func createDB() {
+	*dbtype = "sqlite3"
+	*dsn = ":memory:"
+	db, _ = initDB()
+	db.MustExec("CREATE TABLE t1(a, b PRIMARY KEY)")
+	db.MustExec("INSERT INTO t1 (a, b) VALUES ('hi', 'there')")
+	db.MustExec("INSERT INTO t1 (a, b) VALUES ('how', 'dy')")
+}
+
 func TestNewError(t *testing.T) {
 	assert := assert.New(t)
 
 	err := NewError(errors.New("uh oh"), 400)
 	assert.Equal(err.Code, 400)
 	assert.Equal(err.Error(), "uh oh")
+
+	assert.Equal(NewError(nil, 100).Error(), "")
 }
 
 func TestBadRequest(t *testing.T) {
@@ -69,6 +81,14 @@ func TestBuildDSN(t *testing.T) {
 	*dsn = ":memory:"
 	d = buildDSN()
 	assert.Equal(d, ":memory:")
+
+	*dsn = ""
+	*user = ""
+	buildDSN()
+	assert.Equal(*user, "root")
+
+	*dbtype = "unknown"
+	assert.Equal(buildDSN(), "")
 }
 
 func TestBuildSelectQuery(t *testing.T) {
@@ -120,9 +140,123 @@ func TestBuildUpdateQuery(t *testing.T) {
 		"name": "jack",
 	}
 
-	req, _ := http.NewRequest("PUT", "http://example.com/user/8?__limit__=1", nil)
+	req, _ := http.NewRequest("PUT", "http://example.com/user/8", nil)
 	sql, args, err := buildUpdateQuery(req, data)
 	assert.Nil(err)
 	assert.Equal(args, []interface{}{"jack", "8"})
-	assert.Equal(sql, "UPDATE user SET name = ? WHERE id = ? LIMIT 1")
+	assert.Equal(sql, "UPDATE user SET name = ? WHERE id = ?")
+
+	data = map[string]interface{}{
+		"age": 66,
+	}
+	req, _ = http.NewRequest("PUT", "http://example.com/user?name=jill&__limit__=5", nil)
+	sql, args, err = buildUpdateQuery(req, data)
+	assert.Nil(err)
+	assert.Equal(args, []interface{}{66, "jill"})
+	assert.Equal(sql, "UPDATE user SET age = ? WHERE name IN (?) LIMIT 5")
+}
+
+func TestBuildDeleteQuery(t *testing.T) {
+	assert := assert.New(t)
+
+	*dbtype = "sqlite3"
+	*dsn = ":memory:"
+	// This is needed to setup the squirrel query building package
+	initDB()
+
+	req, _ := http.NewRequest("DELETE", "http://example.com/user/8", nil)
+	sql, args, err := buildDeleteQuery(req)
+	assert.Nil(err)
+	assert.Equal(args, []interface{}{"8"})
+	assert.Equal(sql, "DELETE FROM user WHERE id = ?")
+
+	req, _ = http.NewRequest("DELETE", "http://example.com/user?name=jill&__limit__=5", nil)
+	sql, args, err = buildDeleteQuery(req)
+	assert.Nil(err)
+	assert.Equal(args, []interface{}{"jill"})
+	assert.Equal(sql, "DELETE FROM user WHERE name IN (?) LIMIT 5")
+}
+
+func TestReadQuery(t *testing.T) {
+	assert := assert.New(t)
+
+	createDB()
+	defer closeDB()
+
+	args := make([]interface{}, 0)
+	data, err := readQuery("SELECT * FROM t1", args)
+	assert.Nil(err)
+	assert.Contains([]string{"hi", "how"}, data[0]["a"])
+	assert.Contains([]string{"there", "dy"}, data[0]["b"])
+}
+
+func TestRead(t *testing.T) {
+	assert := assert.New(t)
+
+	createDB()
+	defer closeDB()
+
+	req, _ := http.NewRequest("GET", "http://example.com/t1", nil)
+	d, err := read(req)
+	data := d.([]map[string]interface{})
+	assert.Nil(err)
+	assert.Contains([]string{"hi", "how"}, data[0]["a"])
+	assert.Contains([]string{"there", "dy"}, data[0]["b"])
+}
+
+func TestCreateSingle(t *testing.T) {
+	assert := assert.New(t)
+
+	createDB()
+	defer closeDB()
+
+	data, err := createSingle("t1", map[string]interface{}{
+		"a": "boop",
+		"b": "doop",
+	})
+
+	assert.Nil(err)
+	assert.Equal(data["a"], "boop")
+	assert.Equal(data["b"], "doop")
+	assert.True(data["id"].(int64) > 0)
+}
+
+func TestCreate(t *testing.T) {
+	assert := assert.New(t)
+
+	createDB()
+	defer closeDB()
+
+	b := bytes.NewBufferString(`{
+		"a": "boop",
+		"b": "doop"
+	}`)
+	req, _ := http.NewRequest("POST", "http://example.com/t1", b)
+	d, err := create(req)
+	data := d.(map[string]interface{})
+	assert.Nil(err)
+	assert.Equal(data["a"], "boop")
+	assert.Equal(data["b"], "doop")
+	assert.NotNil(data["id"])
+
+	b = bytes.NewBufferString(`{
+		"a": "boop",
+		"b": 
+	`)
+	req, _ = http.NewRequest("POST", "http://example.com/t1", b)
+	d, err = create(req)
+	assert.Nil(d)
+	assert.Equal(err.Code, 400)
+
+	b = bytes.NewBufferString(`
+	[
+		{ "a": "b" },
+		{ "c": "d" },
+		{ "e": "f" }
+	]
+	`)
+	req, _ = http.NewRequest("POST", "http://example.com/t1", b)
+	d, err = create(req)
+	assert.Nil(d)
+	assert.Equal(err.Code, 400)
 }
