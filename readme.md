@@ -24,6 +24,8 @@ Flags:
     	database source name
   -h string
     	database host
+  -nolog
+    	disable logging
   -p string
     	database password
   -port int
@@ -195,6 +197,21 @@ POST http://localhost:8080
     "last_insert_id": 0,
     "rows_affected": 0
 }
+```
+
+Benchmarks
+----------
+For a completely unscientific benchmark, on my Core i5 laptop (2 cores), I ran [wrk](https://github.com/wg/wrk) against a local **sqld** / **mysql** instance on a 2-column table with 10 rows. The corresponding SQL query `SELECT * FROM user` takes ~250μs when run in the mysql console.
+```
+❯ wrk -t10 -d10 http://localhost:8080/user
+Running 10s test @ http://localhost:8080/user
+  10 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     3.82ms   10.28ms 114.96ms   97.53%
+    Req/Sec   484.34    124.50     0.86k    73.02%
+  48213 requests in 10.02s, 16.60MB read
+Requests/sec:   4811.80
+Transfer/sec:      1.66MB
 ```
 
 TODO
