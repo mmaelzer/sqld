@@ -416,12 +416,9 @@ func raw(r *http.Request) (interface{}, *SqldError) {
 		}
 		lastId, _ := res.LastInsertId()
 		rAffect, _ := res.RowsAffected()
-		return struct {
-			LastInsertId int64 `json:"last_insert_id"`
-			RowsAffected int64 `json:"rows_affected"`
-		}{
-			lastId,
-			rAffect,
+		return map[string]interface{}{
+			"last_insert_id": lastId,
+			"rows_affected":  rAffect,
 		}, nil
 	}
 	return nil, BadRequest(nil)
@@ -434,6 +431,7 @@ func raw(r *http.Request) (interface{}, *SqldError) {
 func handleQuery(w http.ResponseWriter, r *http.Request) {
 	var err *SqldError
 	var data interface{}
+	status := http.StatusOK
 
 	start := time.Now()
 	logRequest := func(status int) {
@@ -452,22 +450,20 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = BadRequest(nil)
 		}
-	}
-
-	switch r.Method {
-	case "GET":
-		data, err = read(r)
-	case "POST":
-		data, err = create(r)
-	case "PUT":
-		data, err = update(r)
-	case "DELETE":
-		data, err = del(r)
-	default:
-		status := http.StatusMethodNotAllowed
-		w.WriteHeader(status)
-		logRequest(status)
-		return
+	} else {
+		switch r.Method {
+		case "GET":
+			data, err = read(r)
+		case "POST":
+			data, err = create(r)
+			status = http.StatusCreated
+		case "PUT":
+			data, err = update(r)
+		case "DELETE":
+			data, err = del(r)
+		default:
+			err = &SqldError{http.StatusMethodNotAllowed, errors.New("")}
+		}
 	}
 
 	if err == nil && data == nil {
@@ -479,7 +475,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		logRequest(err.Code)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(status)
 		json.NewEncoder(w).Encode(data)
 		logRequest(http.StatusOK)
 	}

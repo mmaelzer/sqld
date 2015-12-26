@@ -2,16 +2,20 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"io/ioutil"
+	"log"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 type TestData struct {
-	A string `db:"a"`
-	B string `db:"b"`
+	A string `db:"a" json:"a"`
+	B string `db:"b" json:"b"`
 }
 
 func createDB() {
@@ -21,6 +25,11 @@ func createDB() {
 	db.MustExec("CREATE TABLE t1(a, b PRIMARY KEY)")
 	db.MustExec("INSERT INTO t1 (a, b) VALUES ('hi', 'there')")
 	db.MustExec("INSERT INTO t1 (a, b) VALUES ('how', 'dy')")
+}
+
+func TestCloseDB(t *testing.T) {
+	db = nil
+	assert.Nil(t, closeDB())
 }
 
 func TestNewError(t *testing.T) {
@@ -312,4 +321,172 @@ func TestDel(t *testing.T) {
 	assert.Equal(err.Error(), "sql: no rows in result set")
 	assert.Equal(data.A, "")
 	assert.Equal(data.B, "")
+}
+
+func TestExecQuery(t *testing.T) {
+	assert := assert.New(t)
+
+	createDB()
+	defer closeDB()
+
+	d, sqldErr := execQuery("UPDATE t1 SET b=? WHERE a=?", []interface{}{"doop", "hi"})
+	assert.Nil(sqldErr)
+	assert.Nil(d)
+
+	data := TestData{}
+	err := db.Get(&data, "SELECT * FROM t1 WHERE a=?", "hi")
+	assert.Nil(err)
+	assert.Equal(data.A, "hi")
+	assert.Equal(data.B, "doop")
+
+	d, sqldErr = execQuery("UPDATE t1 SET b=? WHERE a=?", []interface{}{"doop", "not-in-the-db"})
+	assert.Equal(sqldErr.Code, 404)
+	assert.Nil(d)
+
+	d, sqldErr = execQuery("LET'S TRY OUT INCORRECT SQL", []interface{}{})
+	assert.Equal(sqldErr.Code, 400)
+	assert.Nil(d)
+}
+
+func TestRaw(t *testing.T) {
+	assert := assert.New(t)
+
+	createDB()
+	defer closeDB()
+
+	b := bytes.NewBufferString(`{
+		"invalid": "SELECT * FROM t1"
+	}`)
+	req, _ := http.NewRequest("POST", "http://example.com/", b)
+	data, sqldErr := raw(req)
+
+	assert.Equal(sqldErr.Code, 400)
+	assert.Nil(data)
+
+	b = bytes.NewBufferString(`{
+		"invalid": 
+	}`)
+	req, _ = http.NewRequest("POST", "http://example.com/", b)
+	data, sqldErr = raw(req)
+
+	assert.Equal(sqldErr.Code, 400)
+	assert.Contains(sqldErr.Error(), "invalid character")
+	assert.Nil(data)
+
+	b = bytes.NewBufferString(`{
+		"read": "NOT VALID SQL" 
+	}`)
+	req, _ = http.NewRequest("POST", "http://example.com/", b)
+	data, sqldErr = raw(req)
+
+	assert.Equal(sqldErr.Code, 400)
+	assert.Contains(sqldErr.Error(), "syntax error")
+	assert.Nil(data)
+
+	b = bytes.NewBufferString(`{
+		"write": "NOT VALID SQL" 
+	}`)
+	req, _ = http.NewRequest("POST", "http://example.com/", b)
+	data, sqldErr = raw(req)
+
+	assert.Equal(sqldErr.Code, 400)
+	assert.Contains(sqldErr.Error(), "syntax error")
+	assert.Nil(data)
+
+	b = bytes.NewBufferString(`{
+		"read": "SELECT * FROM t1"
+	}`)
+	req, _ = http.NewRequest("POST", "http://example.com/", b)
+	data, sqldErr = raw(req)
+
+	assert.Nil(sqldErr)
+	rows := data.([]map[string]interface{})
+	assert.Contains([]string{"hi", "how"}, rows[0]["a"])
+	assert.Contains([]string{"there", "dy"}, rows[0]["b"])
+
+	b = bytes.NewBufferString(`{
+		"write": "INSERT INTO t1 (a, b) VALUES ('more', 'words')"
+	}`)
+	req, _ = http.NewRequest("POST", "http://example.com/", b)
+	data, sqldErr = raw(req)
+
+	assert.Nil(sqldErr)
+	results := data.(map[string]interface{})
+	assert.Equal(results["last_insert_id"].(int64), int64(3))
+	assert.Equal(results["rows_affected"].(int64), int64(1))
+}
+
+func TestHandleQuery(t *testing.T) {
+	assert := assert.New(t)
+	log.SetOutput(ioutil.Discard)
+	handler := http.HandlerFunc(handleQuery)
+
+	createDB()
+	defer closeDB()
+
+	req, _ := http.NewRequest("PATCH", "http://example.com/t1", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(w.Code, http.StatusMethodNotAllowed)
+
+	req, _ = http.NewRequest("GET", "http://example.com/t1?a=hi", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(w.Code, http.StatusOK)
+	data := []TestData{}
+	json.Unmarshal(w.Body.Bytes(), &data)
+	assert.Equal(len(data), 1)
+	assert.Equal(data[0].A, "hi")
+	assert.Equal(data[0].B, "there")
+
+	b := bytes.NewBufferString(`{
+		"a": "boop",
+		"b": "doop"
+	}`)
+	req, _ = http.NewRequest("POST", "http://example.com/t1", b)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(w.Code, http.StatusCreated)
+	created := TestData{}
+	json.Unmarshal(w.Body.Bytes(), &created)
+	assert.Equal(created.A, "boop")
+	assert.Equal(created.B, "doop")
+
+	b = bytes.NewBufferString(`{
+		"a": "for",
+		"b": "sure"
+	}`)
+	req, _ = http.NewRequest("PUT", "http://example.com/t1?a=hi", b)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(w.Code, http.StatusNoContent)
+	assert.Equal(w.Body.String(), "")
+
+	b = bytes.NewBufferString(`{
+		"a": "for",
+		"b": "sure"
+	}`)
+	req, _ = http.NewRequest("DELETE", "http://example.com/t1?a=for", b)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(w.Code, http.StatusNoContent)
+	assert.Equal(w.Body.String(), "")
+
+	*allowRaw = false
+	req, _ = http.NewRequest("POST", "http://example.com/", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(w.Code, http.StatusBadRequest)
+
+	*allowRaw = true
+	b = bytes.NewBufferString(`{
+		"read": "SELECT * FROM t1"
+	}`)
+	req, _ = http.NewRequest("POST", "http://example.com/", b)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(w.Code, http.StatusOK)
+	var rows []map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &rows)
+	assert.Equal(len(rows), 2)
 }
