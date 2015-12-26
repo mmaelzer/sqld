@@ -8,5 +8,5 @@ import (
 
 func initMySQL() (*sqlx.DB, error) {
 	sq = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
-	return sqlx.Connect(*DBType, buildDSN())
+	return sqlx.Connect(*dbtype, buildDSN())
 }

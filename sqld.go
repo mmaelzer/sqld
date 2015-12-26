@@ -6,11 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Masterminds/squirrel"
 	_ "github.com/go-sql-driver/mysql"
@@ -24,11 +26,12 @@ const usageMessage = "" +
 
 var (
 	allowRaw = flag.Bool("raw", false, "allow raw sql queries")
-	DSN      = flag.String("dsn", "", "database source name")
-	user     = flag.String("user", "root", "database username")
-	pass     = flag.String("pass", "", "database password")
-	DBType   = flag.String("type", "mysql", "database type")
-	DBName   = flag.String("db", "", "database name")
+	dsn      = flag.String("dsn", "", "database source name")
+	user     = flag.String("u", "root", "database username")
+	pass     = flag.String("p", "", "database password")
+	host     = flag.String("h", "", "database host")
+	dbtype   = flag.String("type", "mysql", "database type")
+	dbname   = flag.String("db", "", "database name")
 	port     = flag.Int("port", 8080, "http port")
 
 	mysqlDSNTemplate    = "%s:%s@(%s)/%s?parseTime=true"
@@ -38,6 +41,42 @@ var (
 	sq squirrel.StatementBuilderType
 )
 
+type RawQuery struct {
+	ReadQuery  string `json:"read"`
+	WriteQuery string `json:"write"`
+}
+
+type SqldError struct {
+	Code int
+	Err  error
+}
+
+func (s *SqldError) Error() string {
+	return s.Err.Error()
+}
+
+func NewError(err error, code int) *SqldError {
+	if err == nil {
+		err = errors.New("")
+	}
+	return &SqldError{
+		Code: code,
+		Err:  err,
+	}
+}
+
+func BadRequest(err error) *SqldError {
+	return NewError(err, http.StatusBadRequest)
+}
+
+func NotFound(err error) *SqldError {
+	return NewError(err, http.StatusNotFound)
+}
+
+func InternalError(err error) *SqldError {
+	return NewError(err, http.StatusInternalServerError)
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, usageMessage)
 	fmt.Fprintln(os.Stderr, "Flags:")
@@ -46,11 +85,15 @@ func usage() {
 }
 
 func buildDSN() string {
-	if DSN == nil || *DSN == "" {
-		if *DBType == "postgres" {
-			*DSN = "localhost:5432"
+	if dsn != nil && *dsn != "" {
+		return *dsn
+	}
+
+	if host == nil || *host == "" {
+		if *dbtype == "postgres" {
+			*host = "localhost:5432"
 		} else {
-			*DSN = "localhost:3306"
+			*host = "localhost:3306"
 		}
 	}
 
@@ -62,19 +105,18 @@ func buildDSN() string {
 		*pass = ""
 	}
 
-	switch *DBType {
+	switch *dbtype {
 	case "mysql":
-		return fmt.Sprintf(mysqlDSNTemplate, *user, *pass, *DSN, *DBName)
+		return fmt.Sprintf(mysqlDSNTemplate, *user, *pass, *host, *dbname)
 	case "postgres":
-		return fmt.Sprintf(postgresDSNTemplate, *user, *pass, *DSN, *DBName)
+		return fmt.Sprintf(postgresDSNTemplate, *user, *pass, *host, *dbname)
 	default:
-		return *DSN
+		return *dsn
 	}
 }
 
 func initDB() (*sqlx.DB, error) {
-
-	switch *DBType {
+	switch *dbtype {
 	case "mysql":
 		return initMySQL()
 	case "postgres":
@@ -82,7 +124,7 @@ func initDB() (*sqlx.DB, error) {
 	case "sqlite3":
 		return initSQLite()
 	}
-	return nil, errors.New("Unsupported database type " + *DBType)
+	return nil, errors.New("Unsupported database type " + *dbtype)
 }
 
 func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
@@ -215,21 +257,17 @@ func readQuery(sql string, args []interface{}) ([]map[string]interface{}, error)
 }
 
 // read handles the GET request.
-func read(w http.ResponseWriter, r *http.Request) {
+func read(r *http.Request) (interface{}, *SqldError) {
 	sql, args, err := buildSelectQuery(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 
 	tableData, err := readQuery(sql, args)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, InternalError(err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(tableData)
+	return tableData, nil
 }
 
 // createMany handles the POST method when only multiple models
@@ -297,18 +335,16 @@ func createSingle(table string, item map[string]interface{}) (map[string]interfa
 }
 
 // create handles the POST method.
-func create(w http.ResponseWriter, r *http.Request) {
+func create(r *http.Request) (interface{}, *SqldError) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 	defer r.Body.Close()
 
 	var data interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 
 	paths := strings.Split(r.URL.Path, "/")
@@ -317,146 +353,118 @@ func create(w http.ResponseWriter, r *http.Request) {
 	list, ok := data.([]interface{})
 	if ok {
 		manySaved, err := createMany(table, list)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
 		if len(err) == 0 {
-			json.NewEncoder(w).Encode(manySaved)
+			return manySaved, nil
 		} else {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			return map[string]interface{}{
 				"errors":  err,
 				"objects": manySaved,
-			})
+			}, nil
 		}
-		return
 	}
 
 	item, ok := data.(map[string]interface{})
 	if ok {
 		saved, err := createSingle(table, item)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return nil, InternalError(err)
 		} else {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(saved)
+			return saved, nil
 		}
-		return
 	}
 
-	w.WriteHeader(http.StatusBadRequest)
+	return nil, BadRequest(nil)
 }
 
 // update handles the PUT method.
-func update(w http.ResponseWriter, r *http.Request) {
+func update(r *http.Request) (interface{}, *SqldError) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 	defer r.Body.Close()
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 
 	sql, args, err := buildUpdateQuery(r, data)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 
-	execQuery(sql, args, w)
+	return execQuery(sql, args)
 }
 
 // del handles the DELETE method.
-func del(w http.ResponseWriter, r *http.Request) {
+func del(r *http.Request) (interface{}, *SqldError) {
 	sql, args, err := buildDeleteQuery(r)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 
-	execQuery(sql, args, w)
+	return execQuery(sql, args)
 }
 
 // execQuery will perform a sql query, return the appropriate error code
 // given error states or return an http 204 NO CONTENT on success.
-func execQuery(sql string, args []interface{}, w http.ResponseWriter) {
+func execQuery(sql string, args []interface{}) (interface{}, *SqldError) {
 	res, err := db.Exec(sql, args...)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 
 	rows, err := res.RowsAffected()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 
 	if res != nil && rows == 0 {
-		w.WriteHeader(http.StatusNotFound)
-		return
+		return nil, NotFound(err)
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return nil, nil
 }
 
-type RawQuery struct {
-	ReadQuery  string `json:"read"`
-	WriteQuery string `json:"write"`
-}
-
-func raw(w http.ResponseWriter, r *http.Request) {
+func raw(r *http.Request) (interface{}, *SqldError) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 	defer r.Body.Close()
 
 	var query RawQuery
 	err = json.Unmarshal(body, &query)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return nil, BadRequest(err)
 	}
 
 	noArgs := make([]interface{}, 0)
 	if query.ReadQuery != "" {
 		tableData, err := readQuery(query.ReadQuery, noArgs)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return nil, BadRequest(err)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(tableData)
+		return tableData, nil
 	} else if query.WriteQuery != "" {
 		res, err := db.Exec(query.WriteQuery, noArgs...)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return nil, BadRequest(err)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
 		lastId, _ := res.LastInsertId()
 		rAffect, _ := res.RowsAffected()
-		json.NewEncoder(w).Encode(struct {
+		return struct {
 			LastInsertId int64 `json:"last_insert_id"`
 			RowsAffected int64 `json:"rows_affected"`
 		}{
 			lastId,
 			rAffect,
-		})
-	} else {
-		w.WriteHeader(http.StatusBadRequest)
+		}, nil
 	}
+	return nil, BadRequest(nil)
 }
 
 // handleQuery routes the given request to the proper handler
@@ -464,26 +472,56 @@ func raw(w http.ResponseWriter, r *http.Request) {
 // no available handlers, it responds with a method not found
 // status.
 func handleQuery(w http.ResponseWriter, r *http.Request) {
+	var err *SqldError
+	var data interface{}
+
+	start := time.Now()
+	logRequest := func(status int) {
+		log.Printf(
+			"%d %s %s %s",
+			status,
+			r.Method,
+			r.URL.String(),
+			time.Since(start),
+		)
+	}
+
 	if r.URL.Path == "/" {
 		if *allowRaw == true && r.Method == "POST" {
-			raw(w, r)
+			data, err = raw(r)
 		} else {
-			w.WriteHeader(http.StatusBadRequest)
+			err = BadRequest(nil)
 		}
-		return
 	}
 
 	switch r.Method {
 	case "GET":
-		read(w, r)
+		data, err = read(r)
 	case "POST":
-		create(w, r)
+		data, err = create(r)
 	case "PUT":
-		update(w, r)
+		data, err = update(r)
 	case "DELETE":
-		del(w, r)
+		data, err = del(r)
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		status := http.StatusMethodNotAllowed
+		w.WriteHeader(status)
+		logRequest(status)
+		return
+	}
+
+	if err == nil && data == nil {
+		status := http.StatusNoContent
+		w.WriteHeader(status)
+		logRequest(status)
+	} else if err != nil {
+		http.Error(w, err.Error(), err.Code)
+		logRequest(err.Code)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(data)
+		logRequest(http.StatusOK)
 	}
 }
 

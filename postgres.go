@@ -8,5 +8,5 @@ import (
 
 func initPostgres() (*sqlx.DB, error) {
 	sq = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
-	return sqlx.Connect(*DBType, buildDSN())
+	return sqlx.Connect(*dbtype, buildDSN())
 }
