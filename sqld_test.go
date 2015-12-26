@@ -9,6 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type TestData struct {
+	A string `db:"a"`
+	B string `db:"b"`
+}
+
 func createDB() {
 	*dbtype = "sqlite3"
 	*dsn = ":memory:"
@@ -259,4 +264,52 @@ func TestCreate(t *testing.T) {
 	d, err = create(req)
 	assert.Nil(d)
 	assert.Equal(err.Code, 400)
+}
+
+func TestUpdate(t *testing.T) {
+	assert := assert.New(t)
+
+	createDB()
+	defer closeDB()
+
+	b := bytes.NewBufferString(`{
+		"b": "updated"
+	}`)
+	req, _ := http.NewRequest("PUT", "http://example.com/t1?a=hi", b)
+	d, err := update(req)
+	assert.Nil(err)
+	assert.Nil(d)
+
+	data := TestData{}
+	db.Get(&data, "SELECT * FROM t1 WHERE a=?", "hi")
+	assert.Equal(data.A, "hi")
+	assert.Equal(data.B, "updated")
+
+	b = bytes.NewBufferString(`{
+		"a": "boop",
+		"b": 
+	`)
+	req, _ = http.NewRequest("PUT", "http://example.com/t1/t1?a=hi", b)
+	d, err = update(req)
+	assert.Nil(d)
+	assert.Equal(err.Code, 400)
+}
+
+func TestDel(t *testing.T) {
+	assert := assert.New(t)
+
+	createDB()
+	defer closeDB()
+
+	req, _ := http.NewRequest("DELETE", "http://example.com/t1?a=hi", nil)
+	d, sqldErr := del(req)
+
+	assert.Nil(d)
+	assert.Nil(sqldErr)
+
+	data := TestData{}
+	err := db.Get(&data, "SELECT * FROM t1 WHERE a=?", "hi")
+	assert.Equal(err.Error(), "sql: no rows in result set")
+	assert.Equal(data.A, "")
+	assert.Equal(data.B, "")
 }
