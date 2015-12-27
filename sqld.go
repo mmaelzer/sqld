@@ -16,6 +16,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/mmaelzer/sqld/drivers"
 )
 
 const usageMessage = "" +
@@ -32,6 +33,7 @@ var (
 	dbtype   = flag.String("type", "mysql", "database type")
 	dbname   = flag.String("db", "", "database name")
 	port     = flag.Int("port", 8080, "http port")
+	url      = flag.String("url", "/", "url prefix")
 
 	mysqlDSNTemplate    = "%s:%s@(%s)/%s?parseTime=true"
 	postgresDSNTemplate = "postgres://%s:%s@%s/%s?sslmode=disable"
@@ -83,6 +85,18 @@ func usage() {
 	os.Exit(2)
 }
 
+func handleFlags() {
+	flag.Usage = usage
+	flag.Parse()
+	if !strings.HasSuffix(*url, "/") {
+		*url += "/"
+	}
+
+	if !strings.HasPrefix(*url, "/") {
+		*url = "/" + *url
+	}
+}
+
 func buildDSN() string {
 	if dsn != nil && *dsn != "" {
 		return *dsn
@@ -114,16 +128,17 @@ func buildDSN() string {
 	}
 }
 
-func initDB() (*sqlx.DB, error) {
+func initDB(connect drivers.SQLConnector) (*sqlx.DB, squirrel.StatementBuilderType, error) {
+	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
 	switch *dbtype {
 	case "mysql":
-		return initMySQL()
+		return drivers.InitMySQL(connect, *dbtype, buildDSN())
 	case "postgres":
-		return initPostgres()
+		return drivers.InitPostgres(connect, *dbtype, buildDSN())
 	case "sqlite3":
-		return initSQLite()
+		return drivers.InitSQLite(connect, *dbtype, buildDSN())
 	}
-	return nil, errors.New("Unsupported database type " + *dbtype)
+	return nil, sq, errors.New("Unsupported database type " + *dbtype)
 }
 
 func closeDB() error {
@@ -133,16 +148,25 @@ func closeDB() error {
 	return nil
 }
 
+func parseRequest(r *http.Request) (string, map[string][]string, string) {
+	paths := strings.Split(strings.TrimPrefix(r.URL.Path, *url), "/")
+	table := paths[0]
+	id := ""
+	if len(paths) > 1 {
+		id = paths[1]
+	}
+	return table, r.URL.Query(), id
+}
+
 func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
-	paths := strings.Split(r.URL.Path, "/")
-	table := paths[1]
+	table, args, id := parseRequest(r)
 	query := sq.Select("*").From(table)
 
-	if len(paths) > 2 && paths[2] != "" {
-		query = query.Where(squirrel.Eq{"id": paths[2]})
+	if id != "" {
+		query = query.Where(squirrel.Eq{"id": id})
 	}
 
-	for key, val := range r.URL.Query() {
+	for key, val := range args {
 		switch key {
 		case "__limit__":
 			limit, err := strconv.Atoi(val[0])
@@ -163,19 +187,18 @@ func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
 }
 
 func buildUpdateQuery(r *http.Request, values map[string]interface{}) (string, []interface{}, error) {
-	paths := strings.Split(r.URL.Path, "/")
-	table := paths[1]
+	table, args, id := parseRequest(r)
 	query := sq.Update("").Table(table)
 
 	for key, val := range values {
 		query = query.SetMap(squirrel.Eq{key: val})
 	}
 
-	if len(paths) > 2 && paths[2] != "" {
-		query = query.Where(squirrel.Eq{"id": paths[2]})
+	if id != "" {
+		query = query.Where(squirrel.Eq{"id": id})
 	}
 
-	for key, val := range r.URL.Query() {
+	for key, val := range args {
 		switch key {
 		case "__limit__":
 			limit, err := strconv.Atoi(val[0])
@@ -191,15 +214,14 @@ func buildUpdateQuery(r *http.Request, values map[string]interface{}) (string, [
 }
 
 func buildDeleteQuery(r *http.Request) (string, []interface{}, error) {
-	paths := strings.Split(r.URL.Path, "/")
-	table := paths[1]
+	table, args, id := parseRequest(r)
 	query := sq.Delete("").From(table)
 
-	if len(paths) > 2 && paths[2] != "" {
-		query = query.Where(squirrel.Eq{"id": paths[2]})
+	if id != "" {
+		query = query.Where(squirrel.Eq{"id": id})
 	}
 
-	for key, val := range r.URL.Query() {
+	for key, val := range args {
 		switch key {
 		case "__limit__":
 			limit, err := strconv.Atoi(val[0])
@@ -320,8 +342,7 @@ func create(r *http.Request) (interface{}, *SqldError) {
 		return nil, BadRequest(err)
 	}
 
-	paths := strings.Split(r.URL.Path, "/")
-	table := paths[1]
+	table, _, _ := parseRequest(r)
 
 	item, ok := data.(map[string]interface{})
 	if ok {
@@ -485,16 +506,15 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 // and starts the http server.
 func main() {
 	log.SetOutput(os.Stdout)
-	flag.Usage = usage
-	flag.Parse()
+	handleFlags()
 
 	var err error
-	db, err = initDB()
+	db, sq, err = initDB(sqlx.Connect)
 	if err != nil {
 		fmt.Printf("Unable to connect to database: %s\n", err)
 		os.Exit(1)
 	}
 
-	http.HandleFunc("/", handleQuery)
+	http.HandleFunc(*url, handleQuery)
 	fmt.Println(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }

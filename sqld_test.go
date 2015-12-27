@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Masterminds/squirrel"
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,15 +23,63 @@ type TestData struct {
 func createDB() {
 	*dbtype = "sqlite3"
 	*dsn = ":memory:"
-	db, _ = initDB()
+	db, sq, _ = initDB(sqlx.Connect)
 	db.MustExec("CREATE TABLE t1(a, b PRIMARY KEY)")
 	db.MustExec("INSERT INTO t1 (a, b) VALUES ('hi', 'there')")
 	db.MustExec("INSERT INTO t1 (a, b) VALUES ('how', 'dy')")
 }
 
+func TestInitDB(t *testing.T) {
+	assert := assert.New(t)
+	*dbtype = "nope"
+
+	var dname string
+	var dataSource string
+	connect := func(driverName, dataSourceName string) (*sqlx.DB, error) {
+		dname = driverName
+		dataSource = dataSourceName
+		return nil, nil
+	}
+
+	_, _, err := initDB(connect)
+	assert.Contains(err.Error(), "Unsupported database type")
+
+	var sqrl squirrel.StatementBuilderType
+	*dbtype = "mysql"
+	_, sqrl, err = initDB(connect)
+	assert.Nil(err)
+	assert.IsType(sqrl, squirrel.StatementBuilderType{})
+	assert.Equal(dname, "mysql")
+
+	*dbtype = "postgres"
+	_, sqrl, err = initDB(connect)
+	assert.Nil(err)
+	assert.IsType(sqrl, squirrel.StatementBuilderType{})
+	assert.Equal(dname, "postgres")
+
+	*dbtype = "sqlite3"
+	_, sqrl, err = initDB(connect)
+	assert.Nil(err)
+	assert.IsType(sqrl, squirrel.StatementBuilderType{})
+	assert.Equal(dname, "sqlite3")
+}
+
 func TestCloseDB(t *testing.T) {
 	db = nil
 	assert.Nil(t, closeDB())
+}
+
+func TestHandleFlags(t *testing.T) {
+	assert := assert.New(t)
+
+	handleFlags()
+	assert.Equal(*url, "/")
+	*url = "api"
+	handleFlags()
+	assert.Equal(*url, "/api/")
+
+	// So the remaining tests don't fail
+	*url = "/"
 }
 
 func TestNewError(t *testing.T) {
@@ -111,7 +161,7 @@ func TestBuildSelectQuery(t *testing.T) {
 	*dbtype = "sqlite3"
 	*dsn = ":memory:"
 	// This is needed to setup the squirrel query building package
-	initDB()
+	db, sq, _ = initDB(sqlx.Connect)
 
 	req, _ := http.NewRequest("GET", "http://example.com/user", nil)
 	sql, args, err := buildSelectQuery(req)
@@ -148,7 +198,7 @@ func TestBuildUpdateQuery(t *testing.T) {
 	*dbtype = "sqlite3"
 	*dsn = ":memory:"
 	// This is needed to setup the squirrel query building package
-	initDB()
+	initDB(sqlx.Connect)
 
 	data := map[string]interface{}{
 		"name": "jack",
@@ -176,7 +226,7 @@ func TestBuildDeleteQuery(t *testing.T) {
 	*dbtype = "sqlite3"
 	*dsn = ":memory:"
 	// This is needed to setup the squirrel query building package
-	initDB()
+	initDB(sqlx.Connect)
 
 	req, _ := http.NewRequest("DELETE", "http://example.com/user/8", nil)
 	sql, args, err := buildDeleteQuery(req)
