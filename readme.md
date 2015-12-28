@@ -43,10 +43,10 @@ Flags:
 
 Command Line Arguments
 ----------------------
-### db
+### -db
 The name of the database. Just like `use my_database`.
 
-### dsn
+### -dsn
 The `dsn` is the data source name for the database, used when making the initial connection to the database. If specified, any host (`h`), user (`u`), or password (`p`) values will be ignored in favor of the `dsn`.
 
 * **MySQL** : For MySQL the format looks like `{user}/{password}@({host})/{database_name}?parseTime=true`. More info on MySQL dsn values: https://github.com/go-sql-driver/mysql#dsn-data-source-name
@@ -55,22 +55,22 @@ The `dsn` is the data source name for the database, used when making the initial
 
 * **SQLite** : For SQLite the format can be a file name `test.db` or `file:test.db?cache=shared&mode=memory` or an in-memory store with `:memory:`.  More info on SQLite dsn values: https://godoc.org/github.com/mattn/go-sqlite3#SQLiteDriver.Open
 
-### h
+### -h
 The database hostname. For example, running locally, MySQL will generally be `localhost:3306` and for Postgres `localhost:5432`.
 
-### p
+### -p
 The database password.
 
-### port 
+### -port 
 The HTTP port to serve requests from.
 
-### type
+### -type
 The database type. Currently supported types are `mysql`, `postgres`, and `sqlite3`.
 
-### u
+### -u
 The database username.
 
-### url
+### -url
 The url prefix to use. For example `-url api` will serve requests from `http://hostname:port/api/table` or `-url foo/bar` will serve requests from `http://hostname:port/foo/bar/table`.
 
 Query
