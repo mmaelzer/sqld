@@ -208,12 +208,6 @@ Requests/sec:   4811.80
 Transfer/sec:      1.66MB
 ```
 
-TODO
-----
-- [ ] Add config file support
-- [ ] Add support for stdin passing of a password
-- [ ] Maybe add pagination in responses
-
 License
 -------
 MIT
