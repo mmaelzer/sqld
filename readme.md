@@ -37,15 +37,52 @@ Flags:
     	database type (default "mysql")
   -u string
     	database username (default "root")
+  -url string
+    	url prefix (default "/")
 ```
 
-DSN
----
+Command Line Arguments
+----------------------
+### db
+The name of the database. Just like `use my_database`.
 
-For MySQL and Postgres connections, the `-dsn` value will likely be a URI with a port, like `localhost:3306` for MySQL or `localhost:5432` for Postgres.  
+### dsn
+The `dsn` is the data source name for the database, used when making the initial connection to the database. If specified, any host (`h`), user (`u`), or password (`p`) values will be ignored in favor of the `dsn`.
+
+#### MySQL
+For MySQL the format looks like `{user}/{password}@({host})/{database_name}?parseTime=true`.  
   
-For SQLite connections, the `-dsn` value can be a file name `test.db` or `file:test.db?cache=shared&mode=memory` or an in-memory store with `:memory:`.
+More info on MySQL dsn values: https://github.com/go-sql-driver/mysql#dsn-data-source-name
 
+#### Postgres
+For Postgres the format looks like `postgres://{user}:{password}@{host}/{database_name}?sslmode=disable`.  
+  
+More info on Postgres dsn values: https://godoc.org/github.com/lib/pq#hdr-Connection_String_Parameters
+
+#### SQLite
+For SQLite the format can be a file name `test.db` or `file:test.db?cache=shared&mode=memory` or an in-memory store with `:memory:`.
+
+More info on SQLite dsn values: https://godoc.org/github.com/mattn/go-sqlite3#SQLiteDriver.Open
+
+#### h
+The database hostname. For example, running locally, MySQL will generally be `localhost:3306` and for Postgres `localhost:5432`.
+
+#### p
+The database password.
+
+#### port 
+The HTTP port to serve requests from.
+
+#### tyep
+The database type. Currently supported types are `mysql`, `postgres`, and `sqlite3`.
+
+#### u
+The database username.
+
+#### url
+The url prefix to use. For example `-url api` will serve requests from `http://hostname:port/api/table` or `-url foo/bar` will serve requests from `http://hostname:port/foo/bar/table`.
+
+### 
 Query
 -----
 Interact with the database via URLs.
