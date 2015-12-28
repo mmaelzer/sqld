@@ -64,7 +64,7 @@ The database password.
 ### port 
 The HTTP port to serve requests from.
 
-### tyep
+### type
 The database type. Currently supported types are `mysql`, `postgres`, and `sqlite3`.
 
 ### u
