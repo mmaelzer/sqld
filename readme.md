@@ -179,7 +179,7 @@ POST http://localhost:8080
   }
 ]
 ```
-### Reqest
+### Request
 ```json
 {
   "write": "CREATE TABLE number (id INT NOT NULL AUTO_INCREMENT, num INT NOT NULL, PRIMARY KEY ( id ) )"
