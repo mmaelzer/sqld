@@ -101,6 +101,11 @@ http://localhost:8080/table_name?__limit__=20&name=bob
 http://localhost:8080/table_name?__limit__=20&__offset__=100
 ```
 
+### Order By
+```
+http://localhost:8080/table_name?__order_by__=id+DESC
+```
+
 Create
 ------
 Create rows in the database via POST requests.

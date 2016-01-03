@@ -178,6 +178,8 @@ func buildSelectQuery(r *http.Request) (string, []interface{}, error) {
 			if err == nil {
 				query = query.Offset(uint64(offset))
 			}
+		case "__order_by__":
+			query = query.OrderBy(val...)
 		default:
 			query = query.Where(squirrel.Eq{key: val})
 		}
