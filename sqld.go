@@ -42,20 +42,25 @@ var (
 	sq squirrel.StatementBuilderType
 )
 
+// RawQuery wraps the request body of a raw sqld request
 type RawQuery struct {
 	ReadQuery  string `json:"read"`
 	WriteQuery string `json:"write"`
 }
 
+// SqldError provides additional information on errors encountered
 type SqldError struct {
 	Code int
 	Err  error
 }
 
+// Error is implemented to ensure SqldError conforms to the error
+// interface
 func (s *SqldError) Error() string {
 	return s.Err.Error()
 }
 
+// NewError is a SqldError factory
 func NewError(err error, code int) *SqldError {
 	if err == nil {
 		err = errors.New("")
@@ -66,14 +71,17 @@ func NewError(err error, code int) *SqldError {
 	}
 }
 
+// BadRequest builds a SqldError that represents a bad request
 func BadRequest(err error) *SqldError {
 	return NewError(err, http.StatusBadRequest)
 }
 
+// NotFound builds a SqldError that represents a not found error
 func NotFound(err error) *SqldError {
 	return NewError(err, http.StatusNotFound)
 }
 
+// InternalError builds a SqldError that represents an internal error
 func InternalError(err error) *SqldError {
 	return NewError(err, http.StatusInternalServerError)
 }
@@ -251,7 +259,7 @@ func readQuery(sql string, args []interface{}) ([]map[string]interface{}, error)
 	}
 
 	count := len(columns)
-	tableData := make([]map[string]interface{}, 0)
+	var tableData []map[string]interface{}
 	values := make([]interface{}, count)
 	valuePtrs := make([]interface{}, count)
 
@@ -351,9 +359,8 @@ func create(r *http.Request) (interface{}, *SqldError) {
 		saved, err := createSingle(table, item)
 		if err != nil {
 			return nil, InternalError(err)
-		} else {
-			return saved, nil
 		}
+		return saved, nil
 	}
 
 	return nil, BadRequest(nil)
@@ -425,7 +432,7 @@ func raw(r *http.Request) (interface{}, *SqldError) {
 		return nil, BadRequest(err)
 	}
 
-	noArgs := make([]interface{}, 0)
+	var noArgs []interface{}
 	if query.ReadQuery != "" {
 		tableData, err := readQuery(query.ReadQuery, noArgs)
 		if err != nil {
@@ -437,10 +444,10 @@ func raw(r *http.Request) (interface{}, *SqldError) {
 		if err != nil {
 			return nil, BadRequest(err)
 		}
-		lastId, _ := res.LastInsertId()
+		lastID, _ := res.LastInsertId()
 		rAffect, _ := res.RowsAffected()
 		return map[string]interface{}{
-			"last_insert_id": lastId,
+			"last_insert_id": lastID,
 			"rows_affected":  rAffect,
 		}, nil
 	}

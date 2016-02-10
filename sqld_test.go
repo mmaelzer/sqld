@@ -247,7 +247,7 @@ func TestReadQuery(t *testing.T) {
 	createDB()
 	defer closeDB()
 
-	args := make([]interface{}, 0)
+	var args []interface{}
 	data, err := readQuery("SELECT * FROM t1", args)
 	assert.Nil(err)
 	assert.Contains([]string{"hi", "how"}, data[0]["a"])
