@@ -7,6 +7,7 @@ SQL over HTTP.
 
 [![build status](https://secure.travis-ci.org/mmaelzer/sqld.png)](http://travis-ci.org/mmaelzer/sqld)
 [![Coverage Status](https://coveralls.io/repos/mmaelzer/sqld/badge.svg?branch=master&service=github)](https://coveralls.io/github/mmaelzer/sqld?branch=master)
+[![go report card](https://goreportcard.com/badge/github.com/mmaelzer/sqld)](https://goreportcard.com/badge/github.com/mmaelzer/sqld)
 
 Install
 -------
