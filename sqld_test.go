@@ -15,6 +15,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type ErrorReaderCloser struct{}
+
+func (e ErrorReaderCloser) Read(p []byte) (int, error) {
+	return 0, errors.New("This is an ErrorReaderCloser. This is all it does.")
+}
+
+func (e ErrorReaderCloser) Close() error {
+	return errors.New("ErrorReaderCloser doesn't close properly.")
+}
+
 type TestData struct {
 	A string `db:"a" json:"a"`
 	B string `db:"b" json:"b"`
@@ -190,6 +200,13 @@ func TestBuildSelectQuery(t *testing.T) {
 	assert.Nil(err)
 	assert.Equal(args, []interface{}{"10"})
 	assert.Equal(sql, "SELECT * FROM user WHERE id = ?")
+
+	req, _ = http.NewRequest("GET", "http://example.com/user?__order_by__=id", nil)
+	sql, args, err = buildSelectQuery(req)
+
+	assert.Nil(err)
+	assert.Nil(args)
+	assert.Equal(sql, "SELECT * FROM user ORDER BY id")
 }
 
 func TestBuildUpdateQuery(t *testing.T) {
@@ -323,6 +340,12 @@ func TestCreate(t *testing.T) {
 	d, err = create(req)
 	assert.Nil(d)
 	assert.Equal(err.Code, 400)
+
+	er := ErrorReaderCloser{}
+	req.Body = er
+	d, err = create(req)
+	assert.Nil(d)
+	assert.Equal(err.Code, 400)
 }
 
 func TestUpdate(t *testing.T) {
@@ -349,6 +372,12 @@ func TestUpdate(t *testing.T) {
 		"b": 
 	`)
 	req, _ = http.NewRequest("PUT", "http://example.com/t1/t1?a=hi", b)
+	d, err = update(req)
+	assert.Nil(d)
+	assert.Equal(err.Code, 400)
+
+	er := ErrorReaderCloser{}
+	req.Body = er
 	d, err = update(req)
 	assert.Nil(d)
 	assert.Equal(err.Code, 400)
@@ -464,6 +493,12 @@ func TestRaw(t *testing.T) {
 	results := data.(map[string]interface{})
 	assert.Equal(results["last_insert_id"].(int64), int64(3))
 	assert.Equal(results["rows_affected"].(int64), int64(1))
+
+	er := ErrorReaderCloser{}
+	req.Body = er
+	data, err := raw(req)
+	assert.Nil(data)
+	assert.Equal(err.Code, 400)
 }
 
 func TestHandleQuery(t *testing.T) {

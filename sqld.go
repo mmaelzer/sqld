@@ -520,10 +520,10 @@ func main() {
 	var err error
 	db, sq, err = initDB(sqlx.Connect)
 	if err != nil {
-		fmt.Printf("Unable to connect to database: %s\n", err)
-		os.Exit(1)
+		log.Fatalf("Unable to connect to database: %s\n", err)
 	}
 
 	http.HandleFunc(*url, handleQuery)
-	fmt.Println(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+	log.Printf("sqld listening on port %d", *port)
+	log.Print(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
