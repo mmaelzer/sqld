@@ -5,9 +5,9 @@ SQL over HTTP.
   
 **sqld** supports MySQL (`-type mysql`), Postgres (`-type postgres`), and SQLite (`-type sqlite3`) databases.
 
-[![build status](https://secure.travis-ci.org/mmaelzer/sqld.png)](http://travis-ci.org/mmaelzer/sqld)
+[![build status](https://travis-ci.org/mmaelzer/sqld.svg?branch=master)](http://travis-ci.org/mmaelzer/sqld)
 [![Coverage Status](https://coveralls.io/repos/mmaelzer/sqld/badge.svg?branch=master&service=github)](https://coveralls.io/github/mmaelzer/sqld?branch=master)
-[![go report card](https://goreportcard.com/badge/github.com/mmaelzer/sqld)](https://goreportcard.com/badge/github.com/mmaelzer/sqld)
+[![go report card](https://goreportcard.com/badge/github.com/mmaelzer/sqld)](https://goreportcard.com/report/github.com/mmaelzer/sqld)
 
 Install
 -------
