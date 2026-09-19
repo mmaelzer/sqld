@@ -60,18 +60,25 @@ func TestInitDB(t *testing.T) {
 	assert.Nil(err)
 	assert.IsType(sqrl, squirrel.StatementBuilderType{})
 	assert.Equal(dname, "mysql")
+	// No -dsn is set here, so buildDSN assembles one from the flag defaults.
+	assert.Equal(dataSource, "root:@(localhost:3306)/?parseTime=true")
 
 	*dbtype = "postgres"
 	_, sqrl, err = initDB(connect)
 	assert.Nil(err)
 	assert.IsType(sqrl, squirrel.StatementBuilderType{})
 	assert.Equal(dname, "postgres")
+	// Note the mysql port: buildDSN assigns to *host, so the value the mysql
+	// case defaulted above persists into this one.
+	assert.Equal(dataSource, "postgres://root:@localhost:3306/?sslmode=disable")
 
 	*dbtype = "sqlite3"
 	_, sqrl, err = initDB(connect)
 	assert.Nil(err)
 	assert.IsType(sqrl, squirrel.StatementBuilderType{})
 	assert.Equal(dname, "sqlite3")
+	// buildDSN has no sqlite3 case, so an unset -dsn yields an empty source.
+	assert.Equal(dataSource, "")
 }
 
 func TestCloseDB(t *testing.T) {

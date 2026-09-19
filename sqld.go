@@ -87,8 +87,10 @@ func InternalError(err error) *SqldError {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, usageMessage)
-	fmt.Fprintln(os.Stderr, "Flags:")
+	// usageMessage already ends in a newline; the blank line before "Flags:" is
+	// deliberate, so it comes from the second call rather than a double Println.
+	fmt.Fprint(os.Stderr, usageMessage)
+	fmt.Fprintln(os.Stderr, "\nFlags:")
 	flag.PrintDefaults()
 	os.Exit(2)
 }
