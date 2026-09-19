@@ -38,9 +38,6 @@ go install github.com/mmaelzer/sqld@latest
 Requires Go 1.25.13 or newer. SQLite support is built with cgo, so a C toolchain
 is needed for `-type sqlite3`.
 
-*(Earlier versions of this README said `go get`. That stopped installing binaries in
-Go 1.16, when modules became the default and this repository still had no `go.mod`.)*
-
 Usage
 -----
 ```
