@@ -5,15 +5,38 @@ SQL over HTTP.
   
 **sqld** supports MySQL (`-type mysql`), Postgres (`-type postgres`), and SQLite (`-type sqlite3`) databases.
 
-[![build status](https://travis-ci.org/mmaelzer/sqld.svg?branch=master)](http://travis-ci.org/mmaelzer/sqld)
-[![Coverage Status](https://coveralls.io/repos/mmaelzer/sqld/badge.svg?branch=master&service=github)](https://coveralls.io/github/mmaelzer/sqld?branch=master)
+[![build status](https://github.com/mmaelzer/sqld/actions/workflows/test.yml/badge.svg)](https://github.com/mmaelzer/sqld/actions/workflows/test.yml)
 [![go report card](https://goreportcard.com/badge/github.com/mmaelzer/sqld)](https://goreportcard.com/report/github.com/mmaelzer/sqld)
+
+---
+
+> ## ⚠️ Do not expose sqld to an untrusted network
+>
+> **sqld has no authentication.** Anyone who can reach the port can read and write
+> every table in the database.
+>
+> **Table and column names are interpolated into SQL, not parameterised.** Values are
+> bound safely, but the table name comes from the URL path, column names come from
+> query-string keys, and `__order_by__` takes raw values — all three reach the query
+> unquoted. A crafted request can therefore execute SQL you did not intend.
+>
+> **`-raw` allows arbitrary SQL by design.**
+>
+> sqld is a convenience tool for local development and trusted private networks.
+> It was never hardened for hostile input and is no longer maintained. Do not put it
+> on the public internet, and do not point it at a database holding anything you would
+> mind losing.
+
+---
 
 Install
 -------
+```bash
+go install github.com/mmaelzer/sqld@latest
 ```
-go get github.com/mmaelzer/sqld
-```
+
+Requires Go 1.25.13 or newer. SQLite support is built with cgo, so a C toolchain
+is needed for `-type sqlite3`.
 
 Usage
 -----

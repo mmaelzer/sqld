@@ -87,8 +87,8 @@ func InternalError(err error) *SqldError {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, usageMessage)
-	fmt.Fprintln(os.Stderr, "Flags:")
+	fmt.Fprint(os.Stderr, usageMessage)
+	fmt.Fprintln(os.Stderr, "\nFlags:")
 	flag.PrintDefaults()
 	os.Exit(2)
 }
